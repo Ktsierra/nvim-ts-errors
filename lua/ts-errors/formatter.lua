@@ -129,6 +129,9 @@ function M.format_async(content, callback)
 
   local prettier_cmd = M._find_prettier()
   if not prettier_cmd then
+    -- Ensure only a single callback invocation
+    local finished = false
+    finished = true
     vim.schedule(function()
       callback(content, "Prettier not found")
     end)
@@ -182,6 +185,21 @@ function M.format_async(content, callback)
     end
   end
 
+  local finished = false
+
+  local function once(result, err, cache_ok)
+    if finished then
+      return
+    end
+    finished = true
+    if not err and result and cache_ok then
+      M._cache_set(content, result)
+      pcall(callback, result, nil)
+    else
+      pcall(callback, result, err)
+    end
+  end
+
   local job_id = vim.fn.jobstart(cmd, {
     stdin = "pipe",
     stdout_buffered = true,
@@ -198,6 +216,10 @@ function M.format_async(content, callback)
     end,
     on_exit = function(_, exit_code)
       vim.schedule(function()
+        if finished then
+          return
+        end
+
         if exit_code == 0 and #stdout_data > 0 then
           local formatted = table.concat(stdout_data, "\n")
           -- Remove trailing newline that prettier adds
@@ -211,8 +233,7 @@ function M.format_async(content, callback)
           -- Restore ellipsis placeholders back to "..."
           formatted = formatted:gsub("__TS_ELLIPSIS__", "...")
 
-          M._cache_set(content, formatted)
-          callback(formatted, nil)
+          once(formatted, nil, true)
         else
           local err = table.concat(stderr_data, "\n")
           local error_msg = string.format(
@@ -222,16 +243,19 @@ function M.format_async(content, callback)
             err ~= "" and err or "(empty)",
             #stdout_data > 0 and table.concat(stdout_data, "\n") or "(empty)"
           )
-          callback(content, error_msg)
+          once(content, error_msg, false)
         end
       end)
     end,
   })
 
   if job_id <= 0 then
-    vim.schedule(function()
-      callback(content, "Failed to start prettier job")
-    end)
+    if not finished then
+      finished = true
+      vim.schedule(function()
+        callback(content, "Failed to start prettier job")
+      end)
+    end
     return
   end
 
@@ -242,8 +266,11 @@ function M.format_async(content, callback)
   -- Set timeout
   vim.defer_fn(function()
     if vim.fn.jobwait({ job_id }, 0)[1] == -1 then
-      vim.fn.jobstop(job_id)
-      callback(content, "Prettier timed out")
+      if not finished then
+        finished = true
+        vim.fn.jobstop(job_id)
+        pcall(callback, content, "Prettier timed out")
+      end
     end
   end, cfg.prettier.timeout_ms)
 end
