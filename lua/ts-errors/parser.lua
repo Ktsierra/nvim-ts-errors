@@ -9,7 +9,14 @@ local M = {}
 ---@field lang string|nil Language hint for code blocks
 
 ---@param message string
----@return TSErrorsPart[]
+-- Parse a TypeScript diagnostic message into structured parts for rendering.
+-- The result separates plain text from quoted TypeScript type literals.
+-- Quoted segments that are recognized as pure type literals become `code` parts with lang `"typescript"`;
+-- other quoted segments become `text` parts with inline code formatting (backticks).
+-- If `message` is nil or empty, returns an empty table. If a quoted segment has no matching closing quote,
+-- the remainder is treated as text.
+-- @param message string|nil The diagnostic message to parse.
+-- @return TSErrorsPart[] Array of parts where each part is `{ type = "text"|"code", content = string, lang = string|nil }`.
 function M.parse(message)
   if not message or message == "" then
     return {}
@@ -84,7 +91,10 @@ end
 --- Find closing quote, handling nested structures
 ---@param str string
 ---@param start number
----@return number|nil
+-- Find the matching closing single quote for a quote starting at `start`, treating quotes inside nested {}, [], (), and <> as not closing.
+-- @param str The string to search.
+-- @param start The 1-based index where the opening single quote occurs; scanning begins at this position.
+-- @return The 1-based index of the matching closing single quote, or `nil` if no match is found.
 function M._find_closing_quote(str, start)
   local depth_brace = 0
   local depth_bracket = 0
@@ -124,7 +134,10 @@ end
 --- Check if content is a PURE TypeScript type literal that can be formatted
 --- This is stricter than before - we only want things that are valid TS syntax
 ---@param content string
----@return boolean
+-- Determines whether a quoted string represents a TypeScript type literal suitable for formatting as a code block.
+-- This performs a heuristic check (e.g., minimum length and type-like structure) rather than a full syntax validation.
+-- @param content The quoted string to evaluate.
+-- @return boolean `true` if the content is considered a pure TypeScript type literal and should be formatted as code, `false` otherwise.
 function M._is_pure_type_literal(content)
   -- Must be reasonably long to be worth formatting
   if #content < 30 then
@@ -155,7 +168,10 @@ end
 
 --- Build markdown from parsed parts
 ---@param parts TSErrorsPart[]
----@return string[]
+-- Render parsed message parts into an array of Markdown lines.
+-- Text parts are trimmed and emitted as plain lines; code parts are emitted as fenced code blocks using the part's `lang` (defaults to `"typescript"`).
+-- @param parts Array of parsed parts (each with `type`, `content`, and optional `lang`) as produced by M.parse.
+-- @return string[] An array of lines suitable for joining into Markdown output.
 function M.to_markdown(parts)
   local lines = {}
 

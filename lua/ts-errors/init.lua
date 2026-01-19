@@ -13,7 +13,9 @@ local M = {}
 M._augroup = nil
 
 --- Get the diagnostic at the current cursor position
----@return table|nil
+-- Retrieves the diagnostic for the current cursor position.
+-- Returns the diagnostic whose range contains the cursor column; if none match, returns the first diagnostic on the cursor's line; returns `nil` if there are no diagnostics on the line.
+-- @return table|nil The diagnostic object at the cursor or the first diagnostic on the line, or `nil` if none exist.
 function M._get_cursor_diagnostic()
   local cursor = vim.api.nvim_win_get_cursor(0)
   local line = cursor[1] - 1 -- 0-indexed
@@ -37,7 +39,10 @@ function M._get_cursor_diagnostic()
 end
 
 --- Show prettified diagnostic at cursor
----@param opts? {enter?: boolean}
+-- Show the prettified diagnostic for the diagnostic at the current cursor position.
+-- If there is no diagnostic under the cursor, notifies the user.
+-- @param opts? Optional table of options.
+-- @param opts.enter? If true, focus (enter) the diagnostic float after opening.
 function M.show(opts)
   local diag = M._get_cursor_diagnostic()
   if diag then
@@ -47,7 +52,8 @@ function M.show(opts)
   end
 end
 
---- Toggle the diagnostic float
+-- Toggle the visibility of the prettified diagnostic float.
+-- Closes the float if it is open; otherwise shows the diagnostic at the cursor.
 function M.toggle()
   if ui.is_open() then
     ui.close()
@@ -71,7 +77,14 @@ end
 --- If sync_format is enabled (default), it will block to format on first view.
 --- Otherwise, first view is unformatted and triggers async format for next time.
 ---@param diagnostic vim.Diagnostic
----@return string formatted message
+-- Format a diagnostic message into a single-line, prettified string for display.
+-- 
+-- Parses the diagnostic.message into text and code parts, trims text parts, and
+-- formats code parts using a cache or the configured prettier formatter.
+-- Code fragments are wrapped in single quotes; asynchronous formatting may be
+-- triggered for uncached fragments but the original code is returned for this call.
+-- @param diagnostic Table representing a diagnostic; must include a `message` field.
+-- @return string formatted message
 function M.format(diagnostic)
   if not diagnostic or not diagnostic.message then
     return ""
@@ -114,7 +127,8 @@ function M.goto_next()
   end, 10)
 end
 
---- Go to previous diagnostic and show prettified view
+-- Move the cursor to the previous diagnostic and display its prettified view.
+-- The prettified diagnostic is shown after the editor updates the cursor position.
 function M.goto_prev()
   vim.diagnostic.goto_prev()
   vim.defer_fn(function()
@@ -123,7 +137,10 @@ function M.goto_prev()
 end
 
 --- Setup auto-open on CursorHold
----@param enable boolean
+-- Enable or disable automatic opening of the diagnostic float on CursorHold for TypeScript/JavaScript files.
+-- When enabling, creates an augroup "TSErrorsAutoOpen" and a CursorHold autocmd for *.ts, *.tsx, *.js, and *.jsx that shows the diagnostic at the cursor without entering the float.
+-- If an existing augroup was present it is removed before applying the new setting; if `enable` is false the augroup is cleared and no autocmds are created.
+-- @param enable boolean Whether to enable (true) or disable (false) the auto-open behavior.
 function M._setup_auto_open(enable)
   if M._augroup then
     vim.api.nvim_del_augroup_by_id(M._augroup)
@@ -150,7 +167,11 @@ function M._setup_auto_open(enable)
   })
 end
 
---- Setup keymaps
+-- Install buffer-local keymaps for TypeScript and JavaScript filetypes.
+-- Sets up an autocmd that, on the relevant FileType events, binds the configured
+-- keys to show the prettified diagnostic, go to the next diagnostic, and go to
+-- the previous diagnostic. Mappings are buffer-local and silent; descriptions
+-- are provided for each mapping.
 function M._setup_keymaps()
   local cfg = config.get()
 
@@ -175,7 +196,14 @@ function M._setup_keymaps()
   })
 end
 
---- Setup commands
+-- Set up global user commands for controlling the prettified TS/JS diagnostic UI.
+-- Creates the following commands:
+--   - TSErrShow: show the prettified diagnostic at the cursor (enter the float).
+--   - TSErrToggle: toggle the diagnostic float visibility.
+--   - TSErrNext: navigate to the next diagnostic and show the prettified view.
+--   - TSErrPrev: navigate to the previous diagnostic and show the prettified view.
+--   - TSErrClose: close the diagnostic float.
+--   - TSErrFocus: focus the diagnostic float to enable scrolling.
 function M._setup_commands()
   vim.api.nvim_create_user_command("TSErrShow", function()
     M.show({ enter = true })
@@ -203,7 +231,8 @@ function M._setup_commands()
 end
 
 --- Setup the plugin
----@param opts? TSErrorsConfig
+-- Initialize the plugin with the given options and register commands, buffer keymaps, and auto-open behavior.
+-- @param opts? TSErrorsConfig Optional configuration overrides for the plugin; when omitted defaults are used.
 function M.setup(opts)
   -- Initialize config
   config.setup(opts)

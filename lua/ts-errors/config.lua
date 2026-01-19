@@ -70,13 +70,16 @@ M.defaults = {
 M.options = nil
 
 ---@param opts TSErrorsConfig|nil
----@return TSErrorsConfig
+-- Merge user-provided configuration with the defaults and set the result as the module's active options.
+-- @param opts Optional table with configuration fields to override defaults.
+-- @return The merged TSErrorsConfig used as the module's active configuration.
 function M.setup(opts)
 	M.options = vim.tbl_deep_extend("force", {}, M.defaults, opts or {})
 	return M.options
 end
 
----@return TSErrorsConfig
+-- Retrieve the active TSErrors configuration.
+-- @return The current TSErrorsConfig: the merged user options if set, otherwise the defaults.
 function M.get()
 	if not M.options then
 		return M.defaults

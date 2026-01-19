@@ -17,12 +17,14 @@ M._float_buf = nil
 M._current_diagnostic = nil
 
 --- Check if float window is valid and visible
----@return boolean
+-- Checks whether the floating diagnostic window is currently open and valid.
+-- @return `true` if the floating diagnostic window is open and valid, `false` otherwise.
 function M.is_open()
   return M._float_win ~= nil and vim.api.nvim_win_is_valid(M._float_win)
 end
 
---- Close the floating window
+-- Closes the active floating window (if any) and clears the module's float state.
+-- After closing, resets M._float_win, M._float_buf, and M._current_diagnostic to nil.
 function M.close()
   if M._float_win and vim.api.nvim_win_is_valid(M._float_win) then
     vim.api.nvim_win_close(M._float_win, true)
@@ -34,7 +36,11 @@ end
 
 --- Calculate window dimensions based on content and config
 ---@param lines string[]
----@return number width, number height
+-- Compute the optimal floating window width and height for the provided markdown lines.
+-- Dimensions respect configured max/min bounds and the current Neovim screen size.
+-- @param lines table Array of strings representing the content lines to display.
+-- @return number width The computed window width in columns.
+-- @return number height The computed window height in rows.
 function M._calculate_dimensions(lines)
   local cfg = config.get()
   local max_width = math.min(cfg.ui.max_width, vim.o.columns - 4)
@@ -62,7 +68,9 @@ function M._calculate_dimensions(lines)
 end
 
 --- Setup keymaps for the floating buffer
----@param bufnr number
+-- Install buffer-local key mappings for a floating diagnostic buffer.
+-- Sets mappings to close the float (configured close key and <Esc>) and to allow common scrolling/navigation keys to behave normally inside the float.
+-- @param bufnr number The buffer handle to attach the mappings to.
 function M._setup_float_keymaps(bufnr)
   local cfg = config.get()
   local opts = { noremap = true, silent = true, buffer = bufnr }
@@ -84,7 +92,14 @@ end
 
 --- Create or update the floating window with content
 ---@param lines string[]
----@param opts? {enter?: boolean, title?: string}
+-- Display a markdown-formatted floating window containing the given lines.
+-- Creates a scratch buffer and centered floating window, applies UI and buffer options,
+-- sets up buffer-local keymaps, and registers autocommands to close and clean up the float
+-- when focus returns to the source window or the window is closed.
+-- @param lines string[] The lines of markdown to display in the floating buffer.
+-- @param opts? table Optional settings:
+--   - enter? boolean: if false, do not focus the floating window after opening (defaults to true).
+--   - title? string: override for the floating window title.
 function M._show_float(lines, opts)
   opts = opts or {}
   local cfg = config.get()
@@ -178,7 +193,10 @@ function M._show_float(lines, opts)
 end
 
 --- Update the float buffer content (for async formatting updates)
----@param lines string[]
+-- Update the floating buffer's contents and resize/re-center its window to fit the given lines.
+-- If the float buffer or window is invalid, this is a no-op. Otherwise it replaces the buffer text with `lines`,
+-- recomputes dimensions, and updates the window position and size.
+-- @param lines string[] Lines to write into the floating buffer.
 function M._update_float_content(lines)
   if not M._float_buf or not vim.api.nvim_buf_is_valid(M._float_buf) then
     return
@@ -212,7 +230,9 @@ end
 
 --- Build severity title
 ---@param severity number
----@return string
+-- Get a styled title string for a diagnostic severity.
+-- @param severity Diagnostic severity constant (one of vim.diagnostic.severity.*).
+-- @return `' Error '`, `' Warning '`, `' Info '`, `' Hint '` for known severities, or `' Diagnostic '` for unknown severities.
 function M._severity_title(severity)
   local titles = {
     [vim.diagnostic.severity.ERROR] = " Error ",
@@ -225,7 +245,12 @@ end
 
 --- Show a diagnostic in the floating window
 ---@param diagnostic table vim.Diagnostic
----@param opts? {enter?: boolean}
+-- Display a diagnostic in the floating Markdown window.
+-- Builds an initial markdown view from the diagnostic message, prepends source/code if present,
+-- opens (or replaces) the floating window with that content, and (if enabled) asynchronously formats
+-- any code blocks and updates the float as formatted results arrive.
+-- @param diagnostic table A diagnostic object; expected fields include `message` (string), and optionally `source`, `code`, and `severity`.
+-- @param opts? table Optional settings. `enter` (boolean) — if true, move focus into the floating window after opening.
 function M.show(diagnostic, opts)
   opts = opts or {}
   local cfg = config.get()
@@ -267,7 +292,10 @@ end
 
 --- Format code blocks and update the float
 ---@param parts TSErrorsPart[]
----@param diagnostic table
+-- Asynchronously formats any code parts in `parts` and updates the visible diagnostic float with formatted output.
+-- Makes a deep copy of `parts`, formats each part whose `type` is `"code"` using the async formatter, and when a result arrives replaces that part's content and refreshes the floating window if the supplied `diagnostic` is still the one being displayed.
+-- @param parts array of parsed parts (tables). Code parts must have `type = "code"` and a `content` string; non-code parts are preserved.
+-- @param diagnostic table The diagnostic object corresponding to the float being updated; used to ensure updates are applied only if the same diagnostic is still shown.
 function M._format_and_update(parts, diagnostic)
   local formatted_parts = {}
 
@@ -315,7 +343,8 @@ function M._format_and_update(parts, diagnostic)
   end
 end
 
---- Focus the floating window (for scrolling)
+-- Set focus to the floating diagnostic window if one is open.
+-- Does nothing if no valid floating window exists.
 function M.focus()
   if M._float_win and vim.api.nvim_win_is_valid(M._float_win) then
     vim.api.nvim_set_current_win(M._float_win)
@@ -324,7 +353,10 @@ end
 
 --- Toggle the floating window
 ---@param diagnostic? table
----@param opts? {enter?: boolean}
+-- Toggles the diagnostic floating window: closes it if open, otherwise shows the provided diagnostic.
+-- @param diagnostic The diagnostic to display when opening the float; if nil and the float is closed, no action is taken.
+-- @param opts? Table of optional settings. Supported fields:
+--   - enter (boolean): whether to focus the float after opening.
 function M.toggle(diagnostic, opts)
   if M.is_open() then
     M.close()

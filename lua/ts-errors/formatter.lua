@@ -18,7 +18,9 @@ M._prettier_cmd = nil
 M._prettier_checked = false
 
 --- Find prettier command (prefer regular prettier for --print-width support)
----@return string|nil
+-- Detects and returns the path or command name of a usable Prettier executable, preferring a regular `prettier` (Mason then PATH) and falling back to `prettierd`.
+-- Uses a user-configured override if present and caches the detection result for subsequent calls.
+-- @return The command or path to the discovered Prettier executable, or `nil` if none was found.
 function M._find_prettier()
   if M._prettier_checked then
     return M._prettier_cmd
@@ -69,7 +71,10 @@ end
 
 --- Generate cache key for content
 ---@param content string
----@return string
+-- Compute a stable cache key from the given content.
+-- Uses a small rolling hash to produce a compact string key.
+-- @param content The input string to hash.
+-- @return The resulting hash key as a string.
 function M._cache_key(content)
   -- Simple hash using lua string operations
   local hash = 0
@@ -81,7 +86,9 @@ end
 
 --- Get from cache
 ---@param content string
----@return string|nil
+-- Retrieve a cached formatted result for the given content.
+-- @param content The original content used to compute the cache key.
+-- @return `string` containing the cached formatted content if present, `nil` if caching is disabled or no cache entry exists.
 function M._cache_get(content)
   local cfg = config.get()
   if not cfg.cache.enabled then
@@ -92,7 +99,10 @@ end
 
 --- Set in cache
 ---@param content string
----@param formatted string
+-- Stores a formatted string in the module cache for the given input content.
+-- Respects the user's cache configuration (no-op if caching is disabled) and evicts the entire cache when the configured max_entries is reached.
+-- @param content string The original content used to compute the cache key.
+-- @param formatted string The formatted result to store in the cache.
 function M._cache_set(content, formatted)
   local cfg = config.get()
   if not cfg.cache.enabled then
@@ -115,7 +125,11 @@ end
 
 --- Format code asynchronously using prettier
 ---@param content string The code to format
----@param callback fun(formatted: string, err: string|nil) Callback with result
+-- Formats a TypeScript diagnostic code block using Prettier and invokes a callback with the result.
+-- If a cached formatted result exists it is returned via the callback after a short defer.
+-- If Prettier is unavailable or formatting fails, the callback is invoked with the original `content` and an error message.
+-- @param content The TypeScript diagnostic text to format (may contain "..." ellipses which are sanitized before formatting).
+-- @param callback fun(formatted: string, err: string|nil) Callback invoked with the formatted string as first argument; the second argument is an error message when formatting failed.
 function M.format_async(content, callback)
   -- Check cache first
   local cached = M._cache_get(content)
@@ -250,7 +264,9 @@ end
 
 --- Format code synchronously using prettier (blocks until done)
 ---@param content string The code to format
----@return string formatted The formatted code (or original on error)
+-- Format a TypeScript diagnostic code block using Prettier and return the formatted result.
+-- @param content The TypeScript code block to format.
+-- @return string formatted The formatted code; returns the original input if Prettier is not found or if formatting fails.
 function M.format_sync(content)
   -- Check cache first
   local cached = M._cache_get(content)
@@ -318,13 +334,15 @@ function M.format_sync(content)
   return formatted
 end
 
---- Clear the format cache
+-- Reset the in-memory formatted-results cache and its entry count.
+-- Clears all cached formatted outputs so subsequent formatting will re-run Prettier.
 function M.clear_cache()
   M._cache = {}
   M._cache_count = 0
 end
 
---- Reset prettier command detection (useful for testing)
+-- Clears the cached Prettier command and marks detection as not performed so discovery will run again.
+-- Use to force re-detection (for example in tests or after changing environment).
 function M.reset_prettier_detection()
   M._prettier_cmd = nil
   M._prettier_checked = false
